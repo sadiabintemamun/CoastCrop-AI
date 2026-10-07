@@ -1,10 +1,6 @@
-
 import streamlit as st
 import pandas as pd
-
-# -----------------------------
-# CoastCrop AI
-# -----------------------------
+from sklearn.ensemble import RandomForestRegressor
 
 st.set_page_config(
     page_title="CoastCrop AI",
@@ -12,11 +8,30 @@ st.set_page_config(
     layout="centered"
 )
 
-# Load data
+# -----------------------------
+# Load project data
+# -----------------------------
 seasonal_data = pd.read_csv("coastcrop_seasonal_data.csv")
 risk_data = pd.read_csv("coastcrop_climate_risk.csv")
 
-# Planting calendar
+# -----------------------------
+# Train prototype AI model
+# -----------------------------
+model_data = seasonal_data.copy()
+
+X = model_data[["MONTH", "temperature_avg", "rainfall_avg", "msal"]]
+y = model_data["nsal"]
+
+model = RandomForestRegressor(
+    n_estimators=100,
+    random_state=42
+)
+
+model.fit(X, y)
+
+# -----------------------------
+# Crop planting calendar
+# -----------------------------
 crop_months = {
     "Watermelon": [1, 5, 9],
     "Sunflower": [11, 12],
@@ -26,29 +41,32 @@ crop_months = {
 }
 
 month_names = {
-    1: "January", 2: "February", 3: "March",
-    4: "April", 5: "May", 6: "June",
-    7: "July", 8: "August", 9: "September",
-    10: "October", 11: "November", 12: "December"
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December"
 }
 
 # -----------------------------
-# Header
+# App interface
 # -----------------------------
-
 st.title("🌱 CoastCrop AI")
 st.subheader("Climate-Smart Farming for Coastal Bangladesh")
 
 st.write(
-    "CoastCrop AI combines climate and salinity information "
-    "to provide simple crop-planning decision support."
+    "CoastCrop AI combines climate, salinity and crop-calendar "
+    "information to provide prototype decision support for coastal farmers."
 )
 
 st.divider()
-
-# -----------------------------
-# Farmer Inputs
-# -----------------------------
 
 st.header("🌾 Analyze Your Farm")
 
@@ -72,11 +90,10 @@ analyze = st.button(
 # -----------------------------
 # Analysis
 # -----------------------------
-
 if analyze:
 
-    month_data = risk_data[
-        risk_data["MONTH"] == month
+    month_data = seasonal_data[
+        seasonal_data["MONTH"] == month
     ]
 
     if month_data.empty:
@@ -87,9 +104,32 @@ if analyze:
 
         row = month_data.iloc[0]
 
-        salinity = round(float(row["nsal"]), 2)
-        climate_risk = round(float(row["climate_risk_score"]), 1)
-        risk_level = str(row["risk_level"])
+        temperature = float(row["temperature_avg"])
+        rainfall = float(row["rainfall_avg"])
+        msal = float(row["msal"])
+        actual_salinity = float(row["nsal"])
+
+        # AI model prediction
+        ai_prediction = model.predict(
+            [[month, temperature, rainfall, msal]]
+        )[0]
+
+        ai_prediction = max(0, min(100, ai_prediction))
+
+        climate_row = risk_data[
+            risk_data["MONTH"] == month
+        ]
+
+        if not climate_row.empty:
+            climate_risk = float(
+                climate_row.iloc[0]["climate_risk_score"]
+            )
+            risk_level = str(
+                climate_row.iloc[0]["risk_level"]
+            )
+        else:
+            climate_risk = 0
+            risk_level = "Unknown"
 
         compatible = [
             crop
@@ -99,69 +139,89 @@ if analyze:
 
         st.success("Analysis completed!")
 
-        # Climate information
+        st.header("🤖 AI Salinity Prediction")
+
+        col1, col2 = st.columns(2)
+
+        col1.metric(
+            "Predicted Salinity Index",
+            round(ai_prediction, 2)
+        )
+
+        col2.metric(
+            "Historical Salinity Index",
+            round(actual_salinity, 2)
+        )
+
         st.header("🌦️ Climate Conditions")
 
         col1, col2, col3 = st.columns(3)
 
         col1.metric(
-            "Salinity Index",
-            salinity
+            "Temperature",
+            f"{temperature:.1f} °C"
         )
 
         col2.metric(
-            "Climate Risk",
-            climate_risk
+            "Rainfall",
+            f"{rainfall:.1f} mm"
         )
 
         col3.metric(
-            "Risk Level",
-            risk_level
+            "Climate Risk",
+            f"{climate_risk:.1f}/100"
         )
 
-        # Recommendations
+        st.write(
+            f"**Risk Level:** {risk_level}"
+        )
+
         st.header("🌾 Planting-Compatible Crops")
 
         if compatible:
 
-            for i, crop in enumerate(compatible, 1):
-
+            for i, crop in enumerate(
+                compatible,
+                1
+            ):
                 st.write(
                     f"**{i}. {crop}**"
                 )
 
             st.info(
                 "These crops match the current prototype "
-                "planting-calendar and climate conditions."
+                "planting-calendar information for the selected month."
             )
 
         else:
 
             st.warning(
-                "No crop with a verified planting window "
-                "was found for this month."
+                "No crop with a verified prototype "
+                "planting window was found for this month."
             )
 
-        # Explanation
         st.header("💡 Why this recommendation?")
 
         st.write(
             f"For **{location}** in **{month_names[month]}**, "
-            f"the available salinity index is **{salinity}** "
-            f"and the prototype climate-risk score is "
-            f"**{climate_risk}/100**."
+            f"the AI model estimates a salinity index of "
+            f"**{ai_prediction:.2f}** using month, temperature, "
+            f"rainfall and salinity-related input data."
         )
 
-        # Safety
+        st.caption(
+            "The AI model is a prototype trained on a small "
+            "coastal Bangladesh dataset and requires further "
+            "validation before real-world agricultural use."
+        )
+
         st.warning(
-            "Prototype decision-support system only. "
-            "Recommendations are based on available data "
-            "and require further agricultural validation."
+            "⚠️ Decision-support prototype only. "
+            "Recommendations are not guaranteed agricultural advice."
         )
 
 st.divider()
 
 st.caption(
-    "CoastCrop AI | Climate-smart agriculture prototype "
-    "for coastal Bangladesh"
+    "CoastCrop AI | Climate-smart agriculture prototype for coastal Bangladesh"
 )
